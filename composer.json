@@ -1,0 +1,14 @@
+{
+    "name": "alisher/framework",
+    "description": "A lightweight PHP framework",
+    "require": {
+      "php": ">=8.0",
+      "ext-pdo": "*"
+
+    },
+  "autoload": {
+    "psr-4": {
+      "App\\": "src/App/"
+    }
+  }
+}
