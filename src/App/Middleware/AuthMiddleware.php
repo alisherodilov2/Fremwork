@@ -8,7 +8,7 @@ class AuthMiddleware extends Middleware {
             // Set the HTTP response code to 403 (Forbidden)
             http_response_code(403);
             // Redirect to a 403 error page
-            header("Location: /403");
+            header("Location: /error/403");
             exit; // Stop further execution
         }
 
