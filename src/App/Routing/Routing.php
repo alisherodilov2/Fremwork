@@ -19,54 +19,75 @@ class Routing {
     }
 
     public function dispatch($requestUri, $requestMethod) {
-        $route = $this->routes[$requestMethod][$requestUri] ?? null;
+        foreach ($this->routes[$requestMethod] as $route => $data) {
+            // Convert route placeholders (e.g., /error/{code}) into a regex pattern
+            $pattern = preg_replace('/\{([a-zA-Z0-9_]+)\}/', '([^/]+)', $route);
+            $pattern = "#^" . $pattern . "$#";
 
-        if (!$route) {
-            http_response_code(404);
-            echo "404 Not Found";
-            return;
+            // Match the URI against the pattern
+            if (preg_match($pattern, $requestUri, $matches)) {
+                // Remove the full match from the matches array
+                array_shift($matches);
+
+                // Check for middleware and apply it
+                if (isset($data['middleware']) && $data['middleware']) {
+                    $middleware = $data['middleware'];
+                    if (class_exists($middleware)) {
+                        $middlewareInstance = new $middleware();
+                        $middlewareResult = $middlewareInstance->handle(new \App\Http\Request(), function () {
+                            // Middleware passed
+                        });
+
+                        if ($middlewareResult === false) {
+                            return;
+                        }
+                    } else {
+                        die("Middleware $middleware not found");
+                    }
+                }
+
+                // Resolve the controller action with parameters
+                $callback = $data['callback'];
+
+                if (is_callable($callback)) {
+                    call_user_func_array($callback, $matches);
+                } elseif (is_string($callback)) {
+                    $this->resolveControllerWithParams($callback, $matches);
+                }
+
+                return;
+            }
         }
 
-        // Check if middleware exists and handle it
-        if (isset($route['middleware'])) {
-            $middleware = $route['middleware'];
-            $this->applyMiddleware($middleware);
-        }
-
-        // Resolve the callback (controller action)
-        $callback = $route['callback'];
-
-        if (is_callable($callback)) {
-            call_user_func($callback);
-        } elseif (is_string($callback)) {
-            // Create a Request object
-            $request = new \App\Http\Request();
-
-            // Resolve the controller with parameters
-            $this->resolveControllerWithParams($callback, [$request]);
-        }
+        // No matching route found
+        http_response_code(404);
+        echo "404 Not Found";
     }
 
     protected function resolveControllerWithParams($controllerAction, $params = []) {
         list($controller, $method) = explode('@', $controllerAction);
 
-        // The controller's full class name
-        $controller = "App\\Controllers\\$controller";
+        $controller = "App\\Controllers\\" . $controller;
 
-        // Check if the class exists
         if (!class_exists($controller)) {
             die("Controller $controller not found");
         }
 
-        // Instantiate the controller
         $instance = new $controller();
 
-        // Check if the method exists on the controller
         if (!method_exists($instance, $method)) {
             die("Method $method not found in controller $controller");
         }
 
-        // Call the method with parameters
+        // Create a Request object and add it as the first parameter if the method expects it
+        $reflectionMethod = new \ReflectionMethod($instance, $method);
+        $parameters = $reflectionMethod->getParameters();
+
+        if (count($parameters) > 0 && $parameters[0]->getClass() && $parameters[0]->getClass()->getName() === \App\Http\Request::class) {
+            array_unshift($params, new \App\Http\Request());
+        }
+
+        // Call the method with the provided parameters
         call_user_func_array([$instance, $method], $params);
     }
 
