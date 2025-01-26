@@ -19,41 +19,35 @@ class Routing {
     }
 
     public function dispatch($requestUri, $requestMethod) {
-        $routes = $this->routes[$requestMethod] ?? [];
+        $route = $this->routes[$requestMethod][$requestUri] ?? null;
 
-        foreach ($routes as $path => $route) {
-            // Check for dynamic parameters in the route
-            $regex = preg_replace('/{(\w+)}/', '(?P<\1>[^/]+)', $path);
-            $regex = '@^' . $regex . '$@';
-
-            if (preg_match($regex, $requestUri, $matches)) {
-                // Filter numeric keys from the matches
-                $params = array_filter($matches, 'is_string', ARRAY_FILTER_USE_KEY);
-
-                // Check if middleware exists and handle it
-                if (isset($route['middleware'])) {
-                    $middleware = $route['middleware'];
-                    $this->applyMiddleware($middleware);
-                }
-
-                // Resolve the callback (controller action)
-                $callback = $route['callback'];
-
-                if (is_callable($callback)) {
-                    call_user_func_array($callback, $params);
-                } elseif (is_string($callback)) {
-                    $this->resolveControllerWithParams($callback, $params);
-                }
-                return;
-            }
+        if (!$route) {
+            http_response_code(404);
+            echo "404 Not Found";
+            return;
         }
 
-        // If no route matches, return 404
-        http_response_code(404);
-        echo "404 Not Found";
+        // Check if middleware exists and handle it
+        if (isset($route['middleware'])) {
+            $middleware = $route['middleware'];
+            $this->applyMiddleware($middleware);
+        }
+
+        // Resolve the callback (controller action)
+        $callback = $route['callback'];
+
+        if (is_callable($callback)) {
+            call_user_func($callback);
+        } elseif (is_string($callback)) {
+            // Create a Request object
+            $request = new \App\Http\Request();
+
+            // Resolve the controller with parameters
+            $this->resolveControllerWithParams($callback, [$request]);
+        }
     }
 
-    protected function resolveControllerWithParams($controllerAction, $params) {
+    protected function resolveControllerWithParams($controllerAction, $params = []) {
         list($controller, $method) = explode('@', $controllerAction);
 
         // The controller's full class name
