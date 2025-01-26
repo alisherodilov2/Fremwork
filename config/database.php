@@ -1,7 +1,7 @@
 <?php
 return [
     'host' => 'localhost',
-    'dbname' => 'yourdb',
-    'user' => 'youruser',
-    'password' => 'yourpassword',
+    'dbname' => 'fremwork',
+    'user' => 'root',
+    'password' => '',
 ];

@@ -8,7 +8,7 @@ class Models {
     protected $pdo;
 
     public function __construct() {
-        $config = require __DIR__ . '/../../config/database.php';
+        $config = require __DIR__ . '/../../../config/database.php';
         $dsn = "mysql:host={$config['host']};dbname={$config['dbname']}";
         $this->pdo = new PDO($dsn, $config['user'], $config['password']);
         $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -24,4 +24,10 @@ class Models {
         $stmt->execute(['id' => $id]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
+    public  function where($column, $value) {
+        $stmt = $this->pdo->prepare("SELECT * FROM {$this->table} WHERE {$column} = :value");
+        $stmt->execute(['value' => $value]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
 }

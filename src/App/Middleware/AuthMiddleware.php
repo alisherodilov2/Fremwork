@@ -1,6 +1,8 @@
 <?php
 namespace App\Middleware;
 
+use App\Middleware\Middleware;
+
 class AuthMiddleware extends Middleware {
     public function handle($request, $next) {
         // Example: Check if the user is authenticated

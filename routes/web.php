@@ -11,7 +11,7 @@ $router->get('/dashboard', 'DashboardController@index', AuthMiddleware::class);
 
 // Route without middleware
 $router->get('/login', 'AuthController@login');
-
+$router->post('/login', 'AuthController@authenticate');
 $router->get('/error/{code}', 'error\\ErrorController@error');
 
 return $router;
