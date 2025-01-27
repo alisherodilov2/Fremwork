@@ -1,74 +1,104 @@
 <?php
+
 namespace App\Routing;
-namespace App\Routing;
+
+use App\Http\Request;
+use ReflectionMethod;
 
 class Routing {
     protected $routes = [];
 
-    public function get($path, $callback, $middlewares = []) {
-        $this->routes['GET'][$path] = [
-            'callback' => $callback,
-            'middlewares' => $middlewares
-        ];
+    /**
+     * Register a GET route.
+     */
+    public function get(string $path, $callback, array $middlewares = []): void {
+        $this->registerRoute('GET', $path, $callback, $middlewares);
     }
 
-    public function post($path, $callback, $middlewares = []) {
-        $this->routes['POST'][$path] = [
-            'callback' => $callback,
-            'middlewares' => $middlewares
-        ];
+    /**
+     * Register a POST route.
+     */
+    public function post(string $path, $callback, array $middlewares = []): void {
+        $this->registerRoute('POST', $path, $callback, $middlewares);
     }
 
-    public function dispatch($requestUri, $requestMethod) {
+    /**
+     * Dispatch the request to the appropriate route.
+     */
+    public function dispatch(string $requestUri, string $requestMethod): void {
+        if (!isset($this->routes[$requestMethod])) {
+            $this->sendNotFoundResponse();
+            return;
+        }
+
         foreach ($this->routes[$requestMethod] as $route => $data) {
-            // Convert route placeholders (e.g., /error/{code}) into a regex pattern
-            $pattern = preg_replace('/\{([a-zA-Z0-9_]+)\}/', '([^/]+)', $route);
-            $pattern = "#^" . $pattern . "$#";
-
-            // Match the URI against the pattern
-            if (preg_match($pattern, $requestUri, $matches)) {
-                // Remove the full match from the matches array
-                array_shift($matches);
-
-                // Check for middlewares and apply them
-                if (!empty($data['middlewares'])) {
-                    foreach ($data['middlewares'] as $middleware) {
-                        if (class_exists($middleware)) {
-                            $middlewareInstance = new $middleware();
-                            $middlewareResult = $middlewareInstance->handle(new \App\Http\Request(), function () {
-                                // Middleware passed
-                            });
-
-                            if ($middlewareResult === false) {
-                                return; // If any middleware fails, stop processing the request
-                            }
-                        } else {
-                            die("Middleware $middleware not found");
-                        }
-                    }
+            if ($this->matchRoute($route, $requestUri, $params)) {
+                if ($this->applyMiddlewares($data['middlewares'])) {
+                    $this->executeCallback($data['callback'], $params);
                 }
-
-                // Resolve the controller action with parameters
-                $callback = $data['callback'];
-
-                if (is_callable($callback)) {
-                    call_user_func_array($callback, $matches);
-                } elseif (is_string($callback)) {
-                    $this->resolveControllerWithParams($callback, $matches);
-                }
-
                 return;
             }
         }
 
-        // No matching route found
-        http_response_code(404);
-        echo "404 Not Found";
+        $this->sendNotFoundResponse();
     }
 
-    protected function resolveControllerWithParams($controllerAction, $params = []) {
-        list($controller, $method) = explode('@', $controllerAction);
+    /**
+     * Register a route.
+     */
+    private function registerRoute(string $method, string $path, $callback, array $middlewares = []): void {
+        $this->routes[$method][$path] = [
+            'callback' => $callback,
+            'middlewares' => $middlewares,
+        ];
+    }
 
+    /**
+     * Match the request URI with a route pattern.
+     */
+    private function matchRoute(string $route, string $requestUri, &$params): bool {
+        $pattern = "#^" . preg_replace('/\{([a-zA-Z0-9_]+)\}/', '([^/]+)', $route) . "$#";
+        return preg_match($pattern, $requestUri, $params) && array_shift($params);
+    }
+
+    /**
+     * Apply middlewares to the current request.
+     */
+    private function applyMiddlewares(array $middlewares): bool {
+        foreach ($middlewares as $middleware) {
+            if (!class_exists($middleware)) {
+                die("Middleware $middleware not found");
+            }
+
+            $middlewareInstance = new $middleware();
+            $result = $middlewareInstance->handle(new Request(), function () {
+                // Middleware passed
+            });
+
+            if ($result === false) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Execute the callback for the matched route.
+     */
+    private function executeCallback($callback, array $params): void {
+        if (is_callable($callback)) {
+            call_user_func_array($callback, $params);
+        } elseif (is_string($callback)) {
+            $this->resolveControllerWithParams($callback, $params);
+        }
+    }
+
+    /**
+     * Resolve the controller and method, and invoke it with parameters.
+     */
+    private function resolveControllerWithParams(string $controllerAction, array $params = []): void {
+        [$controller, $method] = explode('@', $controllerAction);
         $controller = "App\\Controllers\\" . $controller;
 
         if (!class_exists($controller)) {
@@ -81,15 +111,36 @@ class Routing {
             die("Method $method not found in controller $controller");
         }
 
-        // Create a Request object and add it as the first parameter if the method expects it
-        $reflectionMethod = new \ReflectionMethod($instance, $method);
+        $this->invokeControllerMethod($instance, $method, $params);
+    }
+
+    /**
+     * Invoke a controller method with the provided parameters.
+     * @throws \ReflectionException
+     */
+    private function invokeControllerMethod($instance, string $method, array $params): void {
+        $reflectionMethod = new ReflectionMethod($instance, $method);
         $parameters = $reflectionMethod->getParameters();
 
-        if (count($parameters) > 0 && $parameters[0]->getClass() && $parameters[0]->getClass()->getName() === \App\Http\Request::class) {
-            array_unshift($params, new \App\Http\Request());
+        if (!empty($parameters) && $this->isRequestParameter($parameters[0])) {
+            array_unshift($params, new Request());
         }
 
-        // Call the method with the provided parameters
         call_user_func_array([$instance, $method], $params);
+    }
+
+    /**
+     * Check if the parameter is a Request object.
+     */
+    private function isRequestParameter($parameter): bool {
+        return $parameter->getClass() && $parameter->getClass()->getName() === Request::class;
+    }
+
+    /**
+     * Send a 404 response.
+     */
+    private function sendNotFoundResponse(): void {
+        http_response_code(404);
+        echo "404 Not Found";
     }
 }
