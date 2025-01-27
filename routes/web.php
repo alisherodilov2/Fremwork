@@ -7,7 +7,7 @@ use App\Routing\Routing;
 $router = new Routing();
 
 // Route with middleware
-$router->get('/dashboard', 'DashboardController@index', AuthMiddleware::class);
+$router->get('/dashboard', 'DashboardController@index', [AuthMiddleware::class]);
 
 // Route without middleware
 $router->get('/login', 'AuthController@login');

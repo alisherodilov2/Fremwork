@@ -1,20 +1,21 @@
 <?php
 namespace App\Routing;
+namespace App\Routing;
 
 class Routing {
     protected $routes = [];
 
-    public function get($path, $callback, $middleware = null) {
+    public function get($path, $callback, $middlewares = []) {
         $this->routes['GET'][$path] = [
             'callback' => $callback,
-            'middleware' => $middleware
+            'middlewares' => $middlewares
         ];
     }
 
-    public function post($path, $callback, $middleware = null) {
+    public function post($path, $callback, $middlewares = []) {
         $this->routes['POST'][$path] = [
             'callback' => $callback,
-            'middleware' => $middleware
+            'middlewares' => $middlewares
         ];
     }
 
@@ -29,20 +30,21 @@ class Routing {
                 // Remove the full match from the matches array
                 array_shift($matches);
 
-                // Check for middleware and apply it
-                if (isset($data['middleware']) && $data['middleware']) {
-                    $middleware = $data['middleware'];
-                    if (class_exists($middleware)) {
-                        $middlewareInstance = new $middleware();
-                        $middlewareResult = $middlewareInstance->handle(new \App\Http\Request(), function () {
-                            // Middleware passed
-                        });
+                // Check for middlewares and apply them
+                if (!empty($data['middlewares'])) {
+                    foreach ($data['middlewares'] as $middleware) {
+                        if (class_exists($middleware)) {
+                            $middlewareInstance = new $middleware();
+                            $middlewareResult = $middlewareInstance->handle(new \App\Http\Request(), function () {
+                                // Middleware passed
+                            });
 
-                        if ($middlewareResult === false) {
-                            return;
+                            if ($middlewareResult === false) {
+                                return; // If any middleware fails, stop processing the request
+                            }
+                        } else {
+                            die("Middleware $middleware not found");
                         }
-                    } else {
-                        die("Middleware $middleware not found");
                     }
                 }
 
@@ -89,16 +91,5 @@ class Routing {
 
         // Call the method with the provided parameters
         call_user_func_array([$instance, $method], $params);
-    }
-
-    protected function applyMiddleware($middleware) {
-        if (class_exists($middleware)) {
-            $middlewareInstance = new $middleware();
-            $middlewareInstance->handle($_REQUEST, function ($request) {
-                // Continue with the request
-            });
-        } else {
-            die("Middleware $middleware not found");
-        }
     }
 }
